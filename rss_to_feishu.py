@@ -1,8 +1,5 @@
 import feedparser
 import requests
-import hashlib
-import hmac
-import base64
 import time
 from flask import Flask
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -11,36 +8,24 @@ import threading
 
 app = Flask(__name__)
 
-# 飞书 Webhook 配置
+# 飞书 Webhook（无需签名）
 WEBHOOK_URL = "https://open.feishu.cn/open-apis/bot/v2/hook/48775750-ec02-452e-95e3-eff99f29a145"
-SIGNING_SECRET = "HC5W7genr5mMcb8uyhnvge"
 
-# 替代 RSS 源（稳定、可被 Render 访问）
+# RSS 源与来源标签
 RSS_FEED_SOURCES = {
-    "https://feeds.reuters.com/reuters/topNews": "Reuters · Top News",
-    "https://feeds.reuters.com/reuters/worldNews": "Reuters · World",
-    "https://feeds.bbci.co.uk/news/world/rss.xml": "BBC · World",
-    "https://rss.nytimes.com/services/xml/rss/nyt/World.xml": "NYTimes · World"
+    "https://rsshub.app/reuters/world": "Reuters · World",
+    "https://rsshub.app/reuters/world/china": "Reuters · China",
+    "https://rsshub.app/reuters/world/us": "Reuters · US",
+    "https://rsshub.app/reuters/breakingviews": "Reuters · Opinions"
 }
 
-# 用于避免重复推送
+# 去重存储已推送链接
 pushed_links = set()
 
-# 签名生成函数
-def generate_signature(timestamp, secret):
-    string_to_sign = f"{timestamp}\n{secret}"
-    hmac_code = hmac.new(secret.encode(), string_to_sign.encode(), digestmod=hashlib.sha256).digest()
-    return base64.b64encode(hmac_code).decode()
-
-# 推送消息到飞书
+# 推送消息到飞书（不使用签名）
 def send_to_feishu(text):
-    timestamp = str(int(time.time()))
-    sign = generate_signature(timestamp, SIGNING_SECRET)
-
     headers = {"Content-Type": "application/json"}
     data = {
-        "timestamp": timestamp,
-        "sign": sign,
         "msg_type": "text",
         "content": {
             "text": text
@@ -49,12 +34,12 @@ def send_to_feishu(text):
     response = requests.post(WEBHOOK_URL, json=data, headers=headers)
     print("[Feishu]", response.status_code, response.text)
 
-# 构造格式化文本内容
+# 构造消息格式
 def format_message(source, entry):
     published = entry.published if 'published' in entry else ''
     return f"【{source}】\n📢 {entry.title}\n🕒 {published}\n🔗 {entry.link}"
 
-# 抓取并推送 RSS 内容
+# 抓取 RSS 并推送新内容
 def fetch_and_push_rss():
     print("[RSS] Starting RSS fetch...")
     for url, source_label in RSS_FEED_SOURCES.items():
@@ -66,7 +51,6 @@ def fetch_and_push_rss():
         print(f"[DEBUG] Entry count: {len(feed.entries)}")
 
         for entry in feed.entries[:5]:
-            print(f"[DEBUG] Entry: {entry.title}")
             if entry.link in pushed_links:
                 continue
             pushed_links.add(entry.link)
@@ -75,12 +59,12 @@ def fetch_and_push_rss():
             send_to_feishu(text)
     print("[RSS] Fetch complete.")
 
-# 设置定时任务
+# 定时任务设置
 scheduler = BackgroundScheduler()
 scheduler.add_job(fetch_and_push_rss, 'interval', minutes=1)
 scheduler.start()
 
-# 首次启动立即抓取一次
+# 启动时立即执行一次
 def run_once():
     threading.Thread(target=fetch_and_push_rss).start()
 
