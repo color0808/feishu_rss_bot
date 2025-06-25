@@ -7,6 +7,7 @@ import time
 from flask import Flask
 from apscheduler.schedulers.background import BackgroundScheduler
 from urllib.parse import urlparse
+import threading
 
 app = Flask(__name__)
 
@@ -46,7 +47,7 @@ def send_to_feishu(text):
         }
     }
     response = requests.post(WEBHOOK_URL, json=data, headers=headers)
-    print(response.status_code, response.text)
+    print("[Feishu]", response.status_code, response.text)
 
 # 构造格式化文本内容
 def format_message(source, entry):
@@ -55,6 +56,7 @@ def format_message(source, entry):
 
 # 抓取并推送 RSS 内容
 def fetch_and_push_rss():
+    print("[RSS] Starting RSS fetch...")
     for url, source_label in RSS_FEED_SOURCES.items():
         feed = feedparser.parse(url)
         for entry in feed.entries[:5]:
@@ -62,16 +64,23 @@ def fetch_and_push_rss():
                 continue
             pushed_links.add(entry.link)
             text = format_message(source_label, entry)
+            print("[RSS] New entry:", text.replace('\n', ' | '))
             send_to_feishu(text)
+    print("[RSS] Fetch complete.")
 
 # 设置定时任务
 scheduler = BackgroundScheduler()
 scheduler.add_job(fetch_and_push_rss, 'interval', minutes=1)
 scheduler.start()
 
+# 首次启动立即抓取一次
+def run_once():
+    threading.Thread(target=fetch_and_push_rss).start()
+
 @app.route('/')
 def home():
-    return 'RSS to Feishu Bot is running on Render.'
+    return 'RSS to Feishu Bot is running. Check logs for activity.'
 
 if __name__ == '__main__':
+    run_once()
     app.run(host='0.0.0.0', port=10000)
