@@ -58,8 +58,15 @@ def format_message(source, entry):
 def fetch_and_push_rss():
     print("[RSS] Starting RSS fetch...")
     for url, source_label in RSS_FEED_SOURCES.items():
+        print(f"[DEBUG] Parsing feed: {url}")
         feed = feedparser.parse(url)
+
+        if hasattr(feed, 'status'):
+            print(f"[DEBUG] Feed status: {feed.status}")
+        print(f"[DEBUG] Entry count: {len(feed.entries)}")
+
         for entry in feed.entries[:5]:
+            print(f"[DEBUG] Entry: {entry.title}")
             if entry.link in pushed_links:
                 continue
             pushed_links.add(entry.link)
