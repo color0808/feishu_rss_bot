@@ -1,77 +1,64 @@
 import feedparser
 import requests
 import time
+import threading
+from datetime import datetime
 from flask import Flask
 from apscheduler.schedulers.background import BackgroundScheduler
-from urllib.parse import urlparse
-import threading
 
 app = Flask(__name__)
 
-# 飞书 Webhook（无需签名）
+# 飞书 Webhook 地址（用户提供）
 WEBHOOK_URL = "https://open.feishu.cn/open-apis/bot/v2/hook/48775750-ec02-452e-95e3-eff99f29a145"
 
-# RSS 源与来源标签
-RSS_FEED_SOURCES = {
-    "https://rsshub.app/reuters/world": "Reuters · World",
-    "https://rsshub.app/reuters/world/china": "Reuters · China",
-    "https://rsshub.app/reuters/world/us": "Reuters · US",
-    "https://rsshub.app/reuters/breakingviews": "Reuters · Opinions"
-}
+# 路透 RSS 源
+RSS_URL = "https://reutersnew.buzzing.cc/feed.xml"
 
-# 去重存储已推送链接
-pushed_links = set()
+# 存储已推送链接，避免重复
+sent_links = set()
 
-# 推送消息到飞书（不使用签名）
+# 格式化推送内容
+def format_message(entry):
+    pub_time = datetime(*entry.published_parsed[:6]).strftime('%Y-%m-%d %H:%M:%S')
+    return f"【Reuters】\n📢 {entry.title}\n🕒 {pub_time}\n🔗 {entry.link}"
+
+# 发送到飞书
 def send_to_feishu(text):
     headers = {"Content-Type": "application/json"}
     data = {
         "msg_type": "text",
-        "content": {
-            "text": text
-        }
+        "content": {"text": text}
     }
-    response = requests.post(WEBHOOK_URL, json=data, headers=headers)
-    print("[Feishu]", response.status_code, response.text)
+    try:
+        resp = requests.post(WEBHOOK_URL, json=data, headers=headers)
+        print(f"[Feishu] Status: {resp.status_code}")
+    except Exception as e:
+        print(f"[Feishu Error] {e}")
 
-# 构造消息格式
-def format_message(source, entry):
-    published = entry.published if 'published' in entry else ''
-    return f"【{source}】\n📢 {entry.title}\n🕒 {published}\n🔗 {entry.link}"
+# 抓取路透并推送
+def fetch_and_push():
+    print(f"[RSS] Fetching at {datetime.now()}")
+    feed = feedparser.parse(RSS_URL)
+    for entry in feed.entries[:5]:
+        if entry.link not in sent_links:
+            sent_links.add(entry.link)
+            msg = format_message(entry)
+            send_to_feishu(msg)
 
-# 抓取 RSS 并推送新内容
-def fetch_and_push_rss():
-    print("[RSS] Starting RSS fetch...")
-    for url, source_label in RSS_FEED_SOURCES.items():
-        print(f"[DEBUG] Parsing feed: {url}")
-        feed = feedparser.parse(url)
-
-        if hasattr(feed, 'status'):
-            print(f"[DEBUG] Feed status: {feed.status}")
-        print(f"[DEBUG] Entry count: {len(feed.entries)}")
-
-        for entry in feed.entries[:5]:
-            if entry.link in pushed_links:
-                continue
-            pushed_links.add(entry.link)
-            text = format_message(source_label, entry)
-            print("[RSS] New entry:", text.replace('\n', ' | '))
-            send_to_feishu(text)
-    print("[RSS] Fetch complete.")
-
-# 定时任务设置
+# 设置定时任务
 scheduler = BackgroundScheduler()
-scheduler.add_job(fetch_and_push_rss, 'interval', minutes=1)
+scheduler.add_job(fetch_and_push, 'interval', minutes=1)
 scheduler.start()
 
-# 启动时立即执行一次
+# 首次运行立即推送一次欢迎信息和最近新闻
 def run_once():
-    threading.Thread(target=fetch_and_push_rss).start()
+    send_to_feishu("✅ Reuters RSS Bot 已成功部署，开始每分钟自动推送最新新闻。")
+    fetch_and_push()
 
 @app.route('/')
 def home():
-    return 'RSS to Feishu Bot is running. Check logs for activity.'
+    return "🟢 Feishu Reuters RSS Bot is running."
 
 if __name__ == '__main__':
     run_once()
-    app.run(host='0.0.0.0', port=10000)
+    app.run(host="0.0.0.0", port=10000)
