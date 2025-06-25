@@ -15,12 +15,12 @@ app = Flask(__name__)
 WEBHOOK_URL = "https://open.feishu.cn/open-apis/bot/v2/hook/48775750-ec02-452e-95e3-eff99f29a145"
 SIGNING_SECRET = "HC5W7genr5mMcb8uyhnvge"
 
-# RSS 源与分类标签映射
+# 替代 RSS 源（稳定、可被 Render 访问）
 RSS_FEED_SOURCES = {
-    "https://rsshub.app/reuters/world": "Reuters · World",
-    "https://rsshub.app/reuters/world/china": "Reuters · China",
-    "https://rsshub.app/reuters/world/us": "Reuters · US",
-    "https://rsshub.app/reuters/breakingviews": "Reuters · Opinions"
+    "https://feeds.reuters.com/reuters/topNews": "Reuters · Top News",
+    "https://feeds.reuters.com/reuters/worldNews": "Reuters · World",
+    "https://feeds.bbci.co.uk/news/world/rss.xml": "BBC · World",
+    "https://rss.nytimes.com/services/xml/rss/nyt/World.xml": "NYTimes · World"
 }
 
 # 用于避免重复推送
